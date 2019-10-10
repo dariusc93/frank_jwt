@@ -183,7 +183,7 @@ fn sign_hmac<P: ToKey>(data: &str, key_path: &P, algorithm: Algorithm) -> Result
         Algorithm::HS256 => MessageDigest::sha256(),
         Algorithm::HS384 => MessageDigest::sha384(),
         Algorithm::HS512 => MessageDigest::sha512(),
-        _  => panic!("Invalid hmac algorithm")
+        _  => return Err(Error::InvalidAlgorithm)
     };
 
     let key = PKey::hmac(&key_path.to_key()?)?;
@@ -198,7 +198,7 @@ fn sign_rsa<P: ToKey>(data: &str, private_key_path: &P, algorithm: Algorithm) ->
         Algorithm::RS256 => MessageDigest::sha256(),
         Algorithm::RS384 => MessageDigest::sha384(),
         Algorithm::RS512 => MessageDigest::sha512(),
-        _  => panic!("Invalid hmac algorithm")
+        _  => return Err(Error::InvalidAlgorithm)
     };
 
     let rsa = Rsa::private_key_from_pem(&private_key_path.to_key()?)?;
@@ -212,7 +212,7 @@ fn sign_es<P: ToKey>(data: &str, private_key_path: &P, algorithm: Algorithm) -> 
         Algorithm::ES256 => MessageDigest::sha256(),
         Algorithm::ES384 => MessageDigest::sha384(),
         Algorithm::ES512 => MessageDigest::sha512(),
-        _  => panic!("Invalid hmac algorithm")
+        _  => return Err(Error::InvalidAlgorithm)
     };
 
     let hash = hash(stp, data.as_bytes())?;
@@ -278,7 +278,7 @@ fn sign_hmac2(data: &str, key: &Vec<u8>, algorithm: Algorithm) -> Result<Vec<u8>
         Algorithm::HS256 => MessageDigest::sha256(),
         Algorithm::HS384 => MessageDigest::sha384(),
         Algorithm::HS512 => MessageDigest::sha512(),
-        _  => panic!("Invalid HMAC algorithm")
+        _  => return Err(Error::InvalidAlgorithm)
     };
 
     let pkey = PKey::hmac(key)?;
@@ -298,7 +298,7 @@ fn verify_signature<P: ToKey>(algorithm: Algorithm, signing_input: String, signa
             let rsa = Rsa::public_key_from_pem(&public_key.to_key()?)?;
             let key = PKey::from_rsa(rsa)?;
 
-            let digest = get_sha_algorithm(algorithm);
+            let digest = get_sha_algorithm(algorithm)?;
             let mut verifier = Verifier::new(digest, &key)?;
             verifier.update(signing_input.as_bytes())?;
             verifier.verify(&signature).map_err(Error::from)
@@ -316,20 +316,22 @@ fn verify_signature<P: ToKey>(algorithm: Algorithm, signing_input: String, signa
             let s = BigNum::from_slice(&signature[32..64])?;
             let sig = EcdsaSig::from_private_components(r, s)?;
 
-            let digest = get_sha_algorithm(algorithm);
+            let digest = get_sha_algorithm(algorithm)?;
             let hash = hash(digest, signing_input.as_bytes())?;
             sig.verify(&hash, &ec_key).map_err(Error::from)
         },
     }
 }
 
-fn get_sha_algorithm(alg: Algorithm) -> MessageDigest {
-    match alg {
+fn get_sha_algorithm(alg: Algorithm) -> Result<MessageDigest, Error> {
+    let digest = match alg {
         Algorithm::RS256 | Algorithm::ES256 => MessageDigest::sha256(),
         Algorithm::RS384 | Algorithm::ES384 => MessageDigest::sha384(),
         Algorithm::RS512 | Algorithm::ES512 => MessageDigest::sha512(),
-        _  => panic!("Invalid RSA algorithm")
-    }
+        _  => return Err(Error::InvalidAlgorithm)
+    };
+
+    Ok(digest)
 }
 
 fn secure_compare(a: &[u8], b: &[u8]) -> bool {
